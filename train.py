@@ -18,12 +18,13 @@ Date: 2019.08.22
 '''
 import numpy as np
 import keras
-from keras.models import load_model
+from keras.models import  load_model
 from tc_II_predict import get_component_vector
 import argparse, sys
 import matplotlib.pyplot as plt
+import json
 
-from model import ATCNN_Ef_model, ATCNN_Tc_model
+from model import  ATCNN_Ef_model
 
 def read_input(train_setfile, readlabel):
     f = open(train_setfile,'r')
@@ -92,8 +93,9 @@ if __name__ == '__main__':
     opt = parser.parse_args()
     
     model = ATCNN_Ef_model()
-    # model = ATCNN_Tc_model()
+    model = load_model('model.keras')
     print(model.summary())
+    #sys.exit(0)
     
     if opt.train:
         opt.readlabel = True
@@ -101,13 +103,30 @@ if __name__ == '__main__':
         x_train, y_train, x_predict, y_predict = data_split(x_data, y_data, split_ratio=opt.ratio)
         x_train = np.reshape(x_train,(len(x_train),10,10,1))
         x_predict = np.reshape(x_predict,(len(x_predict),10,10,1))
+        x_data = np.reshape(x_data,(len(x_data),10,10,1))
         y_train = np.array(y_train)
         y_predict = np.array(y_predict)
+        y_data = np.array(y_data)
+
+        try:
+            with open('last_loss.json', 'rt') as f:
+                data = json.load(f)
+                last_loss = data["last_loss"]
+                last_val_loss = data["val_loss"]
+        except FileNotFoundError:
+            last_loss = model.evaluate(x_data, y_data, batch_size=opt.batchsize)
+            last_val_loss = model.evaluate(x_predict, y_predict, batch_size=opt.batchsize)
+
         model.fit(x_train, y_train, validation_split=0.02, batch_size=opt.batchsize, epochs=opt.niter)
         model.save('model.keras')
-        loss = model.evaluate(x_predict, y_predict, batch_size=opt.batchsize)
-        y_calc = model.predict(x_predict, batch_size=opt.batchsize)
-        print('test set loss:',loss)
+        loss = model.evaluate(x_data, y_data, batch_size=opt.batchsize)
+        val_loss = model.evaluate(x_predict, y_predict, batch_size=opt.batchsize)
+        # y_calc = model.predict(x_predict, batch_size=opt.batchsize)
+        print(f'test set loss: {loss}')
+        if loss < last_loss and val_loss < last_val_loss:
+            model.save('model_best.keras')
+            with open('last_loss.json', 'wt') as f:
+                json.dump({"last_loss" : loss, "val_loss": val_loss}, f)
     
     if opt.predict:
         model = load_model('model.keras')
